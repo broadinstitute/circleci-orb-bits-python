@@ -1,0 +1,187 @@
+---
+version: 2.1
+description: |
+  A collection of useful Python commands and jobs using Pipenv for doing CI/CD.
+
+  See https://github.com/broadinstitute/circleci-python-pipenv
+
+commands:
+  codecov:
+    description: 'Send the coverage report back to codecov.io'
+    steps:
+      - run:
+          name: 'Upload coverage report'
+          command: |
+            pipenv run coverage xml
+            pipenv run codecov --required -X search gcov -f coverage.xml --flags unittests
+  init-pypi:
+    description: 'Initialize the .pypirc file'
+    steps:
+      - run:
+          name: 'Init .pypirc'
+          command: |
+            echo '[pypi]' >> ~/.pypirc
+            echo "username: $PYPI_USER" >> ~/.pypirc
+            echo "password: $PYPI_PASSWORD" >> ~/.pypirc
+  lint:
+    description: Run all linters
+    steps:
+      - run:
+          name: 'Run YAMLlint'
+          command: pipenv run yamllint . -s
+      - run:
+          name: 'Run pylama'
+          command: pipenv run pylama -v --skip '.venv/*'
+  pkgtest:
+    description: 'Run a test module install using setup.py'
+    steps:
+      - run:
+          name: 'Smoke Test Install'
+          command: sudo python setup.py install
+  prereq:
+    description: 'Install and cache dependencies'
+    parameters:
+      cache-version:
+        description: 'A cache version that may be used for cache busting'
+        type: string
+        default: 'v1'
+    steps:
+      - restore_cache:
+          key: <<parameters.cache-version>>-{{ .Environment.CIRCLE_PROJECT_REPONAME }}-{{ checksum "Pipfile" }}-{{ .Environment.CIRCLE_JOB }}
+      - run:
+          name: 'Install Pipenv'
+          command: pip install pipenv
+      - run:
+          name: 'Install Python dependencies'
+          command: |
+            rm -f Pipfile.lock
+            pipenv lock
+            pipenv sync --dev
+      - save_cache:
+          key: <<parameters.cache-version>>-{{ .Environment.CIRCLE_PROJECT_REPONAME }}-{{ checksum "Pipfile" }}-{{ .Environment.CIRCLE_JOB }}
+          paths:
+            - ~/.local/share/virtualenvs
+  publish:
+    description: 'Publish the module to PyPi'
+    steps:
+      - run:
+          name: 'Create packages'
+          command: |
+            python setup.py sdist
+            python setup.py bdist_wheel
+      - run:
+          name: 'Upload to PyPi'
+          command: pipenv run twine upload dist/*
+  unit-tests:
+    description: 'Run Python tests'
+    steps:
+      - run:
+          name: 'Run unit tests'
+          command: pipenv run green -r -vvv
+  verify-tag:
+    description: 'Verify the internal version vs. the git tag'
+    steps:
+      - run:
+          name: 'Verify git tag vs. version'
+          command: python setup.py verify
+
+jobs:
+  preflight:
+    docker:
+      - image: circleci/python:3.6-stretch
+    working_directory: ~/repo
+    environment:
+      PIPENV_COLORBLIND: 1
+      PIPENV_HIDE_EMOJIS: 1
+      PIPENV_NOSPIN: 1
+    steps:
+      - checkout
+      - prereq
+      - lint
+  run-tests:
+    parameters:
+      version:
+        type: string
+        default: '3.6'
+    docker:
+      - image: circleci/python:<< parameters.version >>
+    environment:
+      PIPENV_COLORBLIND: 1
+      PIPENV_HIDE_EMOJIS: 1
+      PIPENV_NOSPIN: 1
+    working_directory: ~/repo
+    steps:
+      - checkout
+      - prereq
+      - unit-tests
+      - pkgtest
+      - codecov
+  deploy:
+    docker:
+      - image: circleci/python:3.6
+    steps:
+      - checkout
+      - prereq
+      - verify-tag
+      - init-pypi
+      - publish
+
+examples:
+  unit_test:
+    description: 'Run unit tests and upload coverage to codecov'
+    usage:
+      version: 2.1
+      orbs:
+        python: 'broadinstitute/python-pipenv@1.0.0'
+      workflows:
+        test_and_deploy:
+          jobs:
+            - python/run-tests:
+                name: 'python-2.7'
+                version: '2.7'
+    result:
+      version: 2.1
+      jobs:
+        python-2.7:
+          docker:
+          - image: circleci/python:2.7
+          environment:
+          - PIPENV_COLORBLIND: 1
+          - PIPENV_HIDE_EMOJIS: 1
+          - PIPENV_NOSPIN: 1
+          working_directory: ~/repo
+          steps:
+          - checkout
+          - restore_cache:
+              key: v1-{{ .Environment.CIRCLE_PROJECT_REPONAME }}-{{ checksum "Pipfile" }}-{{
+                .Environment.CIRCLE_JOB }}
+          - run:
+              name: Install Pipenv
+              command: pip install pipenv
+          - run:
+              name: Install Python dependencies
+              command: |
+                rm -f Pipfile.lock
+                pipenv lock
+                pipenv sync --dev
+          - save_cache:
+              key: v1-{{ .Environment.CIRCLE_PROJECT_REPONAME }}-{{ checksum "Pipfile" }}-{{
+                .Environment.CIRCLE_JOB }}
+              paths:
+              - ~/.local/share/virtualenvs
+          - run:
+              name: Run unit tests
+              command: pipenv run green -r -vvv
+          - run:
+              name: Smoke Test Install
+              command: sudo python setup.py install
+          - run:
+              name: Upload coverage report
+              command: |
+                pipenv run coverage xml
+                pipenv run codecov --required -X search gcov -f coverage.xml --flags unittests
+      workflows:
+        version: 2.1
+        workflow:
+          jobs:
+          - python-2.7
