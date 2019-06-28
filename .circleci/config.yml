@@ -2,16 +2,35 @@
 version: 2.1
 
 orbs:
-  orb-tools: circleci/orb-tools@2.0.0
+  orb-tools: circleci/orb-tools@8.27.2
 
 workflows:
-  publish:
+  version: 2.1
+  validate_deploy:
     jobs:
+      - orb-tools/lint:
+          name: 'orb-lint'
+          use-default-rules: false
+      - orb-tools/publish-dev:
+          attach-workspace: false
+          checkout: true
+          name: 'publish-dev-orb'
+          orb-name: broadinstitute/bits-python
+          orb-path: './orb.yml'
+          publish-alpha-version: false
+          publish-sha-version: false
+          publish-branch-sha-version: true
+          requires:
+            - orb-lint
+          store-artifact: false
+          validate: true
       - orb-tools/publish:
+          checkout: true
           name: 'Publish orb'
-          orb-path: 'src/orb.yml'
-          orb-ref: broadinstitute/python-pipenv@dev:${CIRCLE_BRANCH}
-          publish-token-variable: "$CIRCLECI_DEV_API_TOKEN"
+          orb-path: './orb.yml'
+          orb-ref: broadinstitute/bits-python@${CIRCLE_TAG}
+          requires:
+            - orb-lint
           validate: true
           filters:
             tags:
