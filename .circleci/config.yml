@@ -29,8 +29,6 @@ workflows:
           name: 'Publish orb'
           orb-path: './orb.yml'
           orb-ref: broadinstitute/bits-python@${CIRCLE_TAG}
-          requires:
-            - orb-lint
           validate: true
           filters:
             tags:
