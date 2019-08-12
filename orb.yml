@@ -77,7 +77,7 @@ commands:
     steps:
       - run:
           name: 'Run unit tests'
-          command: pipenv run green -r -vvv
+          command: pipenv run green
   verify-tag:
     description: 'Verify the internal version vs. the git tag'
     steps:
@@ -218,10 +218,7 @@ examples:
         python-2.7:
           docker:
             - image: circleci/python:2.7
-          environment:
-            - PIPENV_COLORBLIND: 1
-            - PIPENV_HIDE_EMOJIS: 1
-            - PIPENV_NOSPIN: 1
+          resource_class: small
           working_directory: ~/repo
           steps:
             - checkout
@@ -244,7 +241,7 @@ examples:
                   - ~/.local/share/virtualenvs
             - run:
                 name: Run unit tests
-                command: pipenv run green -r -vvv
+                command: pipenv run green
             - run:
                 name: Smoke Test Install
                 command: sudo python setup.py install
@@ -253,6 +250,10 @@ examples:
                 command: |
                   pipenv run coverage xml
                   pipenv run codecov --required -X search gcov -f coverage.xml --flags unittests
+          environment:
+            - PIPENV_COLORBLIND: 1
+            - PIPENV_HIDE_EMOJIS: 1
+            - PIPENV_NOSPIN: 1
       workflows:
         version: 2.1
         workflow:
