@@ -85,46 +85,119 @@ commands:
           name: 'Verify git tag vs. version'
           command: python setup.py verify
 
-jobs:
-  preflight:
-    docker:
-      - image: circleci/python:3.6-stretch
-    working_directory: ~/repo
-    environment:
-      PIPENV_COLORBLIND: 1
-      PIPENV_HIDE_EMOJIS: 1
-      PIPENV_NOSPIN: 1
-    steps:
-      - checkout
-      - prereq
-      - lint
-  run-tests:
+executors:
+  python:
     parameters:
       version:
-        type: string
+        type: 'string'
         default: '3.6'
+      resource_class:
+        type: 'string'
+        default: 'small'
     docker:
       - image: circleci/python:<< parameters.version >>
     environment:
       PIPENV_COLORBLIND: 1
       PIPENV_HIDE_EMOJIS: 1
       PIPENV_NOSPIN: 1
-    working_directory: ~/repo
+    resource_class: << parameters.resource_class >>
+    working_directory: '~/repo'
+
+jobs:
+  preflight:
+    parameters:
+      lint:
+        default: true
+        type: boolean
+      resource_class:
+        type: 'string'
+        default: 'small'
+      version:
+        type: 'string'
+        default: '3.6'
+    executor:
+      name: 'python'
+      resource_class: << parameters.resource_class >>
+      version: << parameters.version >>
     steps:
       - checkout
       - prereq
-      - unit-tests
-      - pkgtest
-      - codecov
+      - when:
+          condition: << parameters.lint >>
+          steps:
+            - lint
+  run-tests:
+    parameters:
+      codecov:
+        default: true
+        type: boolean
+      pkgtest:
+        default: true
+        type: boolean
+      resource_class:
+        type: 'string'
+        default: 'small'
+      version:
+        type: string
+        default: '3.6'
+      unit_tests:
+        default: true
+        type: boolean
+    executor:
+      name: 'python'
+      resource_class: << parameters.resource_class >>
+      version: << parameters.version >>
+    steps:
+      - checkout
+      - prereq
+      - when:
+          condition: << parameters.unit_tests >>
+          steps:
+            - unit-tests
+      - when:
+          condition: << parameters.pkgtest >>
+          steps:
+            - pkgtest
+      - when:
+          condition: << parameters.codecov >>
+          steps:
+            - codecov
   deploy:
-    docker:
-      - image: circleci/python:3.6-stretch
+    parameters:
+      init_pypi:
+        default: true
+        type: boolean
+      publish:
+        default: true
+        type: boolean
+      resource_class:
+        type: 'string'
+        default: 'small'
+      verify_tag:
+        default: true
+        type: boolean
+      version:
+        type: string
+        default: '3.6'
+    executor:
+      name: 'python'
+      resource_class: << parameters.resource_class >>
+      version: << parameters.version >>
     steps:
       - checkout
       - prereq
-      - verify-tag
-      - init-pypi
-      - publish
+      - when:
+          condition: << parameters.verify_tag >>
+          steps:
+            - verify-tag
+      - when:
+          condition: << parameters.init_pypi >>
+          steps:
+            - init-pypi
+      - when:
+          condition: << parameters.publish >>
+          steps:
+            - publish
 
 examples:
   unit_test:
